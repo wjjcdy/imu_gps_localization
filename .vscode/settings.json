@@ -79,5 +79,13 @@
         "random": "cpp",
         "set": "cpp",
         "stack": "cpp"
-    }
+    },
+    "python.autoComplete.extraPaths": [
+        "/home/outdoor/sim/gazebo_sim/smartcar/devel/lib/python2.7/dist-packages",
+        "/opt/ros/kinetic/lib/python2.7/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/outdoor/sim/gazebo_sim/smartcar/devel/lib/python2.7/dist-packages",
+        "/opt/ros/kinetic/lib/python2.7/dist-packages"
+    ]
 }

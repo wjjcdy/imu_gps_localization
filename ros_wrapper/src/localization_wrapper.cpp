@@ -9,8 +9,10 @@
 LocalizationWrapper::LocalizationWrapper(ros::NodeHandle& nh) {
     // Load configs.
     double acc_noise, gyro_noise, acc_bias_noise, gyro_bias_noise;
+    //传感器噪声误差
     nh.param("acc_noise",       acc_noise, 1e-2);
     nh.param("gyro_noise",      gyro_noise, 1e-4);
+    // 传感器零偏噪声误差
     nh.param("acc_bias_noise",  acc_bias_noise, 1e-6);
     nh.param("gyro_bias_noise", gyro_bias_noise, 1e-8);
 
@@ -28,6 +30,7 @@ LocalizationWrapper::LocalizationWrapper(ros::NodeHandle& nh) {
     file_gps_.open(log_folder +"/gps.csv");
 
     // Initialization imu gps localizer.
+    // 融合
     imu_gps_localizer_ptr_ = 
         std::make_unique<ImuGpsLocalization::ImuGpsLocalizer>(acc_noise, gyro_noise,
                                                               acc_bias_noise, gyro_bias_noise,
@@ -35,6 +38,7 @@ LocalizationWrapper::LocalizationWrapper(ros::NodeHandle& nh) {
 
     // Subscribe topics.
     imu_sub_ = nh.subscribe("/imu/data", 10,  &LocalizationWrapper::ImuCallback, this);
+    // gps 数据
     gps_position_sub_ = nh.subscribe("/fix", 10,  &LocalizationWrapper::GpsPositionCallback, this);
 
     state_pub_ = nh.advertise<nav_msgs::Path>("fused_path", 10);
@@ -48,13 +52,16 @@ LocalizationWrapper::~LocalizationWrapper() {
 void LocalizationWrapper::ImuCallback(const sensor_msgs::ImuConstPtr& imu_msg_ptr) {
     ImuGpsLocalization::ImuDataPtr imu_data_ptr = std::make_shared<ImuGpsLocalization::ImuData>();
     imu_data_ptr->timestamp = imu_msg_ptr->header.stamp.toSec();
+    // 加速度
     imu_data_ptr->acc << imu_msg_ptr->linear_acceleration.x, 
                          imu_msg_ptr->linear_acceleration.y,
                          imu_msg_ptr->linear_acceleration.z;
+    // 角速度
     imu_data_ptr->gyro << imu_msg_ptr->angular_velocity.x,
                           imu_msg_ptr->angular_velocity.y,
                           imu_msg_ptr->angular_velocity.z;
     
+    // 对IMU进行融合
     ImuGpsLocalization::State fused_state;
     const bool ok = imu_gps_localizer_ptr_->ProcessImuData(imu_data_ptr, &fused_state);
     if (!ok) {
@@ -62,6 +69,7 @@ void LocalizationWrapper::ImuCallback(const sensor_msgs::ImuConstPtr& imu_msg_pt
     }
 
     // Publish fused state.
+    // 发布融合后状态
     ConvertStateToRosTopic(fused_state);
     state_pub_.publish(ros_path_);
 
@@ -69,6 +77,7 @@ void LocalizationWrapper::ImuCallback(const sensor_msgs::ImuConstPtr& imu_msg_pt
     LogState(fused_state);
 }
 
+// gps数据接收
 void LocalizationWrapper::GpsPositionCallback(const sensor_msgs::NavSatFixConstPtr& gps_msg_ptr) {
     // Check the gps_status.
     if (gps_msg_ptr->status.status != 2) {
@@ -78,11 +87,13 @@ void LocalizationWrapper::GpsPositionCallback(const sensor_msgs::NavSatFixConstP
 
     ImuGpsLocalization::GpsPositionDataPtr gps_data_ptr = std::make_shared<ImuGpsLocalization::GpsPositionData>();
     gps_data_ptr->timestamp = gps_msg_ptr->header.stamp.toSec();
+    // gps精度，维度和高度
     gps_data_ptr->lla << gps_msg_ptr->latitude,
                          gps_msg_ptr->longitude,
                          gps_msg_ptr->altitude;
+    // gps协方差
     gps_data_ptr->cov = Eigen::Map<const Eigen::Matrix3d>(gps_msg_ptr->position_covariance.data());
-
+    // 融合处理
     imu_gps_localizer_ptr_->ProcessGpsPositionData(gps_data_ptr);
 
     LogGps(gps_data_ptr);
@@ -106,6 +117,7 @@ void LocalizationWrapper::LogGps(const ImuGpsLocalization::GpsPositionDataPtr gp
               << gps_data->lla[0] << "," << gps_data->lla[1] << "," << gps_data->lla[2] << "\n";
 }
 
+//   融合后的世界坐标系
 void LocalizationWrapper::ConvertStateToRosTopic(const ImuGpsLocalization::State& state) {
     ros_path_.header.frame_id = "world";
     ros_path_.header.stamp = ros::Time::now();  
